@@ -1,0 +1,22 @@
+Product X Technical Specifications
+
+Model: ProX-2024
+Display:
+- 6.7" OLED capacitive touchscreen
+- 2688 × 1242 pixel resolution
+- 120Hz refresh rate
+
+Performance:
+- Snapdragon 8 Gen 3 processor
+- 12GB LPDDR5X RAM
+- 256GB/512GB UFS 4.0 storage
+
+Connectivity:
+- 5G NR (Sub-6 GHz and mmWave)
+- Wi-Fi 7 (802.11be)
+- Bluetooth 5.3
+
+Durability:
+- IP68 water/dust resistance
+- Gorilla Glass Victus 3
+- Aerospace-grade aluminum frame
