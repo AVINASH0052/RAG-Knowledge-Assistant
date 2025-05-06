@@ -14,52 +14,65 @@ DOCUMENT_DIR = "docs"
 VECTOR_STORE_NAME = "faiss_index"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
-# Initialize NVIDIA Client with environment variable
-nvidia_client = OpenAI(
-    base_url="https://integrate.api.nvidia.com/v1",
-    api_key=st.secrets["API_KEY"]  # Make sure to set this in your environment
-)
+@st.cache_resource(show_spinner=False)
+def init_nvidia_client():
+    """Initialize NVIDIA client with secrets management"""
+    if "API_KEY" not in st.secrets:
+        raise ValueError("NVIDIA_API_KEY not found in Streamlit secrets")
+    return OpenAI(
+        base_url="https://integrate.api.nvidia.com/v1",
+        api_key=st.secrets["API_KEY"]
+    )
+
+nvidia_client = init_nvidia_client()
+
+@st.cache_resource(show_spinner="Loading embeddings...")
+def get_embeddings():
+    """Cached embeddings model loader"""
+    return HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        model_kwargs={'device': 'cpu'},
+        encode_kwargs={'normalize_embeddings': False}
+    )
 
 def load_and_chunk_documents():
-    """Load and process documents with error handling"""
+    """Document processor with validation"""
     if not os.path.exists(DOCUMENT_DIR):
-        raise FileNotFoundError(f"Document directory '{DOCUMENT_DIR}' not found")
+        raise FileNotFoundError(f"Missing document directory: {DOCUMENT_DIR}")
 
     documents = []
     for file in ["doc1.txt", "doc2.txt", "doc3.txt"]:
         file_path = os.path.join(DOCUMENT_DIR, file)
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Document {file} not found in {DOCUMENT_DIR}")
-        
-        loader = TextLoader(file_path)
-        documents.extend(loader.load())
+            raise FileNotFoundError(f"Missing document: {file_path}")
+        documents.extend(TextLoader(file_path).load())
 
     return RecursiveCharacterTextSplitter(
         chunk_size=300,
-        chunk_overlap=50
+        chunk_overlap=50,
+        length_function=len,
+        add_start_index=True
     ).split_documents(documents)
 
+@st.cache_resource(show_spinner="Initializing vector store...")
 def initialize_vector_store():
-    """Create or load vector store with safety override"""
+    """Vector store manager with caching"""
     if os.path.exists(VECTOR_STORE_NAME):
-        st.info("Loading existing vector store...")
         return FAISS.load_local(
             VECTOR_STORE_NAME,
-            HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL),
-            allow_dangerous_deserialization=True  # Required for loading existing index
+            get_embeddings(),
+            allow_dangerous_deserialization=True
         )
     
-    st.info("Creating new vector store...")
     chunks = load_and_chunk_documents()
-    embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
-    vector_store = FAISS.from_documents(chunks, embeddings)
+    vector_store = FAISS.from_documents(chunks, get_embeddings())
     vector_store.save_local(VECTOR_STORE_NAME)
     return vector_store
 
 def generate_answer(query, context):
-    """Generate clean answers without XML tags"""
-    system_prompt = f"""Answer the question based ONLY on this context. 
-    Do NOT use markdown or XML tags. Be concise.
+    """Safe answer generation with sanitization"""
+    system_prompt = f"""Answer the question using ONLY this context.
+    Be concise and professional. If unsure, state "I don't know".
     
     Context: {context}"""
     
@@ -73,45 +86,49 @@ def generate_answer(query, context):
             temperature=0.6,
             max_tokens=1024
         )
-        # Clean up any XML artifacts
-        return response.choices[0].message.content.replace("<think>", "").replace("</think>", "").strip()
+        return clean_response(response.choices[0].message.content)
     except Exception as e:
-        return f"Error generating answer: {str(e)}"
+        return f"⚠️ Error: {str(e)}"
+
+def clean_response(text):
+    """Response sanitizer"""
+    return text.replace("<think>", "").replace("</think>", "").strip()
 
 def math_calculator(query):
-    """Secure calculation without numexpr"""
+    """Secure calculation handler"""
     try:
-        allowed_ops = {'+': operator.add, '-': operator.sub, '*': operator.mul, '/': operator.truediv}
+        allowed_ops = {'+': operator.add, '-': operator.sub, 
+                      '*': operator.mul, '/': operator.truediv}
         match = re.search(r'(\d+)([\+\-\*\/])(\d+)', query)
         if not match:
-            return "Invalid expression format"
+            return "❌ Invalid expression format"
         num1, op, num2 = match.groups()
-        return str(allowed_ops[op](int(num1), int(num2)))
+        return str(allowed_ops[op](int(num1), int(num2))
     except Exception as e:
-        return f"Calculation error: {str(e)}"
+        return f"❌ Calculation error: {str(e)}"
 
 def term_definition(query):
-    """Technical term lookup"""
+    """Technical term resolver"""
     tech_terms = {
         "OLED": "Organic Light-Emitting Diode display technology",
         "IP68": "Ingress Protection rating for dust/water resistance",
         "5G": "Fifth-generation cellular network technology"
     }
     match = re.search(r"\b(define|what is|meaning of) (\w+)", query, re.IGNORECASE)
-    return tech_terms.get(match.group(2).upper(), "Term not found") if match else "No term specified"
+    return tech_terms.get(match.group(2).upper(), "❌ Term not found") if match else "❌ No term specified"
 
 def route_query(query):
-    """Improved query routing"""
+    """Enhanced query router"""
     query = query.lower()
-    if any(kw in query for kw in ["calculate", "compute", "+", "-", "*", "/"]):
+    if re.search(r"\b(calculate|compute|math)\b|[\+\-\*\/]", query):
         return "calculator", math_calculator(query)
-    elif any(kw in query for kw in ["define", "what is", "meaning of"]):
+    if re.search(r"\b(define|what is|meaning of)\b", query):
         return "dictionary", term_definition(query)
     return "rag", None
 
 def main():
-    """Streamlit UI"""
-    st.title("RAG-Powered Multi-Agent Q&A Assistant")
+    """Streamlit application interface"""
+    st.title("🧠 RAG-Powered Multi-Agent Q&A Assistant")
     
     try:
         vs = initialize_vector_store()
@@ -119,24 +136,27 @@ def main():
         st.error(f"Initialization failed: {str(e)}")
         return
 
-    query = st.text_input("Ask your question:")
-    if not query:
+    query = st.text_input("Ask your question:", placeholder="Type your question here...")
+    if not query.strip():
         return
 
     tool, answer = route_query(query)
     context = None
 
     if tool == "rag":
-        context_docs = vs.similarity_search(query, k=3)
-        context = "\n---\n".join([doc.page_content for doc in context_docs])
-        answer = generate_answer(query, context)
+        with st.spinner("Analyzing documents..."):
+            context_docs = vs.similarity_search(query, k=3)
+            context = "\n---\n".join([doc.page_content for doc in context_docs])
+            answer = generate_answer(query, context)
 
     st.subheader("Analysis")
-    st.write(f"**Path Used:** {tool.upper()}")
+    col1, col2 = st.columns(2)
+    col1.metric("Processing Path", tool.upper())
+    col2.metric("Context Sources", len(context_docs) if context else 0)
     
     if context:
-        with st.expander("View Context"):
-            st.write(context)
+        with st.expander("View Relevant Context"):
+            st.text(context)
     
     st.subheader("Answer")
     st.markdown(f"```\n{answer}\n```")
