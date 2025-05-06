@@ -97,15 +97,38 @@ def clean_response(text):
 def math_calculator(query):
     """Secure calculation handler"""
     try:
-        allowed_ops = {'+': operator.add, '-': operator.sub, 
-                      '*': operator.mul, '/': operator.truediv}
-        match = re.search(r'(\d+)([\+\-\*\/])(\d+)', query)
+        allowed_ops = {
+            '+': operator.add,
+            '-': operator.sub,
+            '*': operator.mul,
+            '/': operator.truediv
+        }
+        
+        # Enhanced pattern to handle spaces and different number formats
+        match = re.search(r'(\d+\.?\d*)\s*([\+\-\*\/])\s*(\d+\.?\d*)', query)
         if not match:
-            return "❌ Invalid expression format"
+            return "❌ Invalid format. Use: 'number operator number' (e.g., 15 * 3)"
+            
         num1, op, num2 = match.groups()
-        return str(allowed_ops[op](int(num1), int(num2))) 
+        result = allowed_ops[op](float(num1), float(num2))
+        
+        # Formatting for whole numbers vs decimals
+        return str(int(result)) if result.is_integer() else f"{result:.2f}"
+        
+    except ZeroDivisionError:
+        return "❌ Cannot divide by zero"
     except Exception as e:
         return f"❌ Calculation error: {str(e)}"
+
+def route_query(query):
+    """Enhanced query router"""
+    query = query.lower()
+    # More precise calculation detection
+    if re.search(r"\b(calculate|compute|solve|what is|convert|math)\b", query):
+        return "calculator", math_calculator(query)
+    if re.search(r"\b(define|explain|meaning of)\b", query):
+        return "dictionary", term_definition(query)
+    return "rag", None
 
 def term_definition(query):
     """Technical term resolver"""
