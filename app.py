@@ -1,7 +1,7 @@
 # app.py
 import os
 import re
-import operator
+import numexpr
 import streamlit as st
 from openai import OpenAI
 from langchain_community.document_loaders import TextLoader
@@ -19,7 +19,7 @@ def init_nvidia_client():
     """Initialize NVIDIA client with authentication"""
     return OpenAI(
         base_url="https://integrate.api.nvidia.com/v1",
-        api_key=st.secrets["API_KEY"]
+        api_key=st.secrets["NVIDIA_API_KEY"]
     )
 
 @st.cache_resource(show_spinner="🚀 Loading embeddings...")
@@ -29,7 +29,7 @@ def get_embeddings():
         model_name=EMBEDDING_MODEL,
         model_kwargs={
             'device': 'cpu',
-            'token': st.secrets["HF_TOKEN"]  # Hugging Face token
+            'token': st.secrets["HF_TOKEN"]
         },
         encode_kwargs={'normalize_embeddings': False}
     )
@@ -94,28 +94,19 @@ def clean_response(text):
     return text.replace("<think>", "").replace("</think>", "").strip()
 
 def math_calculator(query):
-    """Enhanced calculator with natural language support"""
+    """Advanced math processor with numexpr"""
     try:
-        op_map = {
-            '+': operator.add, 'plus': operator.add,
-            '-': operator.sub, 'minus': operator.sub,
-            '*': operator.mul, 'times': operator.mul, 'x': operator.mul,
-            '/': operator.truediv, 'divided by': operator.truediv
-        }
-
         # Normalize input
-        query = re.sub(r'[^0-9\.\+\-\*/x]', ' ', query.lower()).strip()
-        pattern = r'(\d+\.?\d*)\s*([+\-*/]|plus|minus|times|divided by|x)\s*(\d+\.?\d*)'
-        match = re.search(pattern, query)
+        clean_query = re.sub(r'[^0-9\.\+\-\*/]', '', query.lower())
+        clean_query = clean_query.replace('dividedby', '/').replace('x', '*')
         
-        if not match:
-            return "❌ Invalid format. Try: '15 times 3' or '20 / 5'"
+        # Validate expression
+        if not re.match(r'^[\d\.\+\-\*/]+$', clean_query):
+            return "❌ Invalid math expression"
             
-        num1, op, num2 = match.groups()
-        op = op_map.get(op.lower(), op)
-        
-        result = op(float(num1), float(num2))
-        return f"{result:.2f}" if isinstance(result, float) else str(result)
+        # Safe evaluation
+        result = numexpr.evaluate(clean_query).item()
+        return f"{result:.2f}" if not result.is_integer() else str(int(result))
         
     except ZeroDivisionError:
         return "❌ Cannot divide by zero"
@@ -133,16 +124,19 @@ def term_definition(query):
     return tech_terms.get(match.group(2).upper(), "❌ Term not found") if match else "❌ No term specified"
 
 def route_query(query):
-    """Enhanced query router with priority handling"""
-    query = query.lower()
+    """Enhanced query router with math priority"""
+    query = query.lower().strip('?')
     
-    # Math detection
+    # Math detection pattern
     math_pattern = re.compile(
-        r'(?:^|\b)(calc|compute|solve|math|what[\'’]?s|what is)\b.*?\d+.*?\d+',
+        r'(?:^|\b)(calc|compute|solve|math|what[\'’]?s|what is)\b'  # Triggers
+        r'.*?(\d+[\.\d]*[\+\-\*\/]\d+[\.\d]*)',  # Matches expressions
         re.IGNORECASE
     )
-    if math_pattern.search(query):
-        return "calculator", math_calculator(query)
+    
+    if math_match := math_pattern.search(query):
+        expression = math_match.group(2)
+        return "calculator", math_calculator(expression)
     
     # Technical definitions
     if re.search(r'\b(define|explain|meaning of)\b', query):
@@ -171,6 +165,7 @@ def main():
     tool, answer = route_query(query)
     context = None
 
+    # Only process RAG for non-math questions
     if tool == "rag":
         with st.spinner("🔍 Analyzing documents..."):
             context_docs = vs.similarity_search(query, k=3)
