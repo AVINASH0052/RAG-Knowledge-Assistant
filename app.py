@@ -95,24 +95,38 @@ def clean_response(text):
     return text.replace("<think>", "").replace("</think>", "").strip()
 
 def math_calculator(query):
-    """Secure calculation handler"""
+    """Enhanced calculation handler with verbal operators"""
     try:
         allowed_ops = {
             '+': operator.add,
+            'plus': operator.add,
             '-': operator.sub,
+            'minus': operator.sub,
             '*': operator.mul,
-            '/': operator.truediv
+            'times': operator.mul,
+            'x': operator.mul,
+            '/': operator.truediv,
+            'divided by': operator.truediv
         }
+
+        # Handle verbal operators and different formats
+        query = query.lower().replace('?', '')
+        verbal_pattern = r'(\d+\.?\d*)\s+(plus|minus|times|divided by|x)\s+(\d+\.?\d*)'
+        symbol_pattern = r'(\d+\.?\d*)\s*([\+\-\*\/])\s*(\d+\.?\d*)'
         
-        # Enhanced pattern to handle spaces and different number formats
-        match = re.search(r'(\d+\.?\d*)\s*([\+\-\*\/])\s*(\d+\.?\d*)', query)
+        match = re.match(verbal_pattern, query) or re.match(symbol_pattern, query)
+        
         if not match:
-            return "❌ Invalid format. Use: 'number operator number' (e.g., 15 * 3)"
+            return "❌ Invalid format. Try: '15 times 3' or '20 / 5'"
             
         num1, op, num2 = match.groups()
+        op = op.strip().lower()
+        
+        # Convert verbal operators to symbols
+        op = {'plus': '+', 'minus': '-', 'times': '*', 'x': '*', 'divided by': '/'}.get(op, op)
+        
         result = allowed_ops[op](float(num1), float(num2))
         
-        # Formatting for whole numbers vs decimals
         return str(int(result)) if result.is_integer() else f"{result:.2f}"
         
     except ZeroDivisionError:
@@ -121,13 +135,20 @@ def math_calculator(query):
         return f"❌ Calculation error: {str(e)}"
 
 def route_query(query):
-    """Enhanced query router"""
+    """Improved query router with operator precedence"""
     query = query.lower()
-    # More precise calculation detection
-    if re.search(r"\b(calculate|compute|solve|what is|convert|math)\b", query):
+    
+    # Enhanced math detection
+    math_keywords = r"\b(calculate|compute|solve|math)\b"
+    math_phrases = r"\d+\s*(plus|minus|times|divided by|x|\+|-|\*|/)\s*\d+"
+    has_math = re.search(math_keywords, query) or re.search(math_phrases, query)
+    
+    if has_math or ("what is" in query and re.search(r'\d+.*\d+', query)):
         return "calculator", math_calculator(query)
+    
     if re.search(r"\b(define|explain|meaning of)\b", query):
         return "dictionary", term_definition(query)
+    
     return "rag", None
 
 def term_definition(query):
