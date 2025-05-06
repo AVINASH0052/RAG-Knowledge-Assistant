@@ -21,16 +21,19 @@ A multi-agent Q&A system combining NVIDIA's cutting-edge LLMs with Retrieval-Aug
 ## Architecture
 
 ```mermaid
-graph LR
-    A[User Input] --> B{Query Router}
+graph TD
+    A[User Query] --> B{Query Router}
     B -->|Calculation| C[Math Agent]
     B -->|Definition| D[Tech Dictionary]
     B -->|General| E[RAG Pipeline]
-    E --> F[FAISS Vector Store]
-    F --> G[Document Chunks]
-    E --> H[NVIDIA LLM]
-    H --> I[Response Generator]
-    I --> J[Output Formatter]
+    E --> F[Document Chunks]
+    F --> G[FAISS Vector Store]
+    G --> H[Relevant Context]
+    E --> I[NVIDIA LLM]
+    H --> I
+    I --> J[Response Generator]
+    J --> K[Output Formatter]
+    K --> L[Final Answer]
 ```
 
 **Data Flow**:
