@@ -1,7 +1,7 @@
 
 # RAG Knowledge Assistant
 
-![Demo Screenshot](https://drive.google.com/file/d/1_L9feiEVAl24gQajDXpGj3aG2mYEyCaK/view?usp=drivesdk)
+![Demo Screenshot](https://drive.google.com/uc?export=view&id=1_L9feiEVAl24gQajDXpGj3aG2mYEyCaK)
 
 A multi-agent Q&A system combining NVIDIA's cutting-edge LLMs with Retrieval-Augmented Generation (RAG) for enterprise knowledge management.
 
