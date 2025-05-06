@@ -17,7 +17,7 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 # Initialize NVIDIA Client with environment variable
 nvidia_client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
-    api_key=NVIDIA_API_KEY  # Make sure to set this in your environment
+    api_key=os.environ['NVIDIA_API_KEY']  # Make sure to set this in your environment
 )
 
 def load_and_chunk_documents():
