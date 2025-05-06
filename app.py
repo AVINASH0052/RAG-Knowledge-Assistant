@@ -1,4 +1,4 @@
-# app.py
+# app.py (Critical Fix Version)
 import os
 import re
 import numexpr
@@ -16,7 +16,6 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 @st.cache_resource(show_spinner=False)
 def init_nvidia_client():
-    """Initialize NVIDIA client with authentication"""
     return OpenAI(
         base_url="https://integrate.api.nvidia.com/v1",
         api_key=st.secrets["API_KEY"]
@@ -24,28 +23,22 @@ def init_nvidia_client():
 
 @st.cache_resource(show_spinner="🚀 Loading embeddings...")
 def get_embeddings():
-    """Initialize Hugging Face embeddings with authentication"""
     return HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
-        model_kwargs={
-            'device': 'cpu',
-            'token': st.secrets["HF_TOKEN"]
-        },
+        model_kwargs={'device': 'cpu', 'token': st.secrets["HF_TOKEN"]},
         encode_kwargs={'normalize_embeddings': False}
     )
 
 def load_and_chunk_documents():
-    """Document processor with validation"""
     if not os.path.exists(DOCUMENT_DIR):
-        raise FileNotFoundError(f"Document directory '{DOCUMENT_DIR}' not found")
-
+        raise FileNotFoundError(f"Missing document directory: {DOCUMENT_DIR}")
+    
     documents = []
     for file in ["doc1.txt", "doc2.txt", "doc3.txt"]:
         file_path = os.path.join(DOCUMENT_DIR, file)
-        if not os.path.exists(file_path):
-            raise FileNotFoundError(f"Document {file} not found")
-        documents.extend(TextLoader(file_path).load())
-
+        if os.path.exists(file_path):
+            documents.extend(TextLoader(file_path).load())
+    
     return RecursiveCharacterTextSplitter(
         chunk_size=300,
         chunk_overlap=50,
@@ -55,7 +48,6 @@ def load_and_chunk_documents():
 
 @st.cache_resource(show_spinner="📚 Building knowledge base...")
 def initialize_vector_store():
-    """Vector store manager with caching"""
     if os.path.exists(VECTOR_STORE_NAME):
         return FAISS.load_local(
             VECTOR_STORE_NAME,
@@ -69,7 +61,6 @@ def initialize_vector_store():
     return vector_store
 
 def generate_answer(query, context):
-    """Safe answer generation with sanitization"""
     system_prompt = f"""Answer using ONLY this context. Be concise.
     If unsure, say "I don't know".
     
@@ -90,31 +81,26 @@ def generate_answer(query, context):
         return f"⚠️ Error: {str(e)}"
 
 def clean_response(text):
-    """Response sanitizer"""
     return text.replace("<think>", "").replace("</think>", "").strip()
 
 def math_calculator(query):
-    """Advanced math processor with numexpr"""
+    """Enhanced math processor with strict validation"""
     try:
-        # Normalize input
-        clean_query = re.sub(r'[^0-9\.\+\-\*/]', '', query.lower())
-        clean_query = clean_query.replace('dividedby', '/').replace('x', '*')
-        
-        # Validate expression
-        if not re.match(r'^[\d\.\+\-\*/]+$', clean_query):
+        # Normalize and validate input
+        clean_query = re.sub(r'[^0-9\.\+\-\*/]', '', query)
+        if not re.fullmatch(r'^[\d\.\+\-\*/]+$', clean_query):
             return "❌ Invalid math expression"
-            
-        # Safe evaluation
-        result = numexpr.evaluate(clean_query).item()
-        return f"{result:.2f}" if not result.is_integer() else str(int(result))
         
+        # Evaluate using numexpr for safety
+        result = numexpr.evaluate(clean_query).item()
+        return f"{result:.2f}" if isinstance(result, float) else str(int(result))
+    
     except ZeroDivisionError:
         return "❌ Cannot divide by zero"
     except Exception as e:
         return f"❌ Calculation error: {str(e)}"
 
 def term_definition(query):
-    """Technical term resolver"""
     tech_terms = {
         "OLED": "Organic Light-Emitting Diode display technology",
         "IP68": "Ingress Protection rating for dust/water resistance",
@@ -124,29 +110,19 @@ def term_definition(query):
     return tech_terms.get(match.group(2).upper(), "❌ Term not found") if match else "❌ No term specified"
 
 def route_query(query):
-    """Enhanced query router with math priority"""
-    query = query.lower().strip('?')
+    """Strict query routing with math priority"""
+    # First check for math patterns
+    if re.search(r'\d+[\+\-\*\/]+\d+', query):
+        return "calculator", math_calculator(query)
     
-    # Math detection pattern
-    math_pattern = re.compile(
-        r'(?:^|\b)(calc|compute|solve|math|what[\'’]?s|what is)\b'  # Triggers
-        r'.*?(\d+[\.\d]*[\+\-\*\/]\d+[\.\d]*)',  # Matches expressions
-        re.IGNORECASE
-    )
-    
-    if math_match := math_pattern.search(query):
-        expression = math_match.group(2)
-        return "calculator", math_calculator(expression)
-    
-    # Technical definitions
-    if re.search(r'\b(define|explain|meaning of)\b', query):
+    # Then check for technical definitions
+    if re.search(r'\b(define|what is|meaning of)\b', query):
         return "dictionary", term_definition(query)
     
     # Default to RAG
     return "rag", None
 
 def main():
-    """Streamlit application interface"""
     st.title("🧠 RAG-Powered Multi-Agent Q&A Assistant")
     
     try:
@@ -165,7 +141,6 @@ def main():
     tool, answer = route_query(query)
     context = None
 
-    # Only process RAG for non-math questions
     if tool == "rag":
         with st.spinner("🔍 Analyzing documents..."):
             context_docs = vs.similarity_search(query, k=3)
