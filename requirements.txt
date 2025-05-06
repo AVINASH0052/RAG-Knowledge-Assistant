@@ -8,3 +8,4 @@ openai
 faiss-cpu==1.8.0
 watchdog==4.0.0
 torch==2.3.0
+numexpr
