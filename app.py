@@ -9,6 +9,11 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
+import streamlit as st
+
+st.write("Secrets keys available:", list(st.secrets.keys()))
+
+
 # Configuration
 DOCUMENT_DIR = "docs"
 VECTOR_STORE_NAME = "faiss_index"
