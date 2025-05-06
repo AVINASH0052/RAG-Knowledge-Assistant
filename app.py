@@ -103,7 +103,7 @@ def math_calculator(query):
         if not match:
             return "❌ Invalid expression format"
         num1, op, num2 = match.groups()
-        return str(allowed_ops[op](int(num1), int(num2))
+        return str(allowed_ops[op](int(num1), int(num2))) 
     except Exception as e:
         return f"❌ Calculation error: {str(e)}"
 
