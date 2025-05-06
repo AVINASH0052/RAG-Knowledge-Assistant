@@ -9,11 +9,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-import streamlit as st
-
-st.write("Secrets keys available:", list(st.secrets.keys()))
-
-
 # Configuration
 DOCUMENT_DIR = "docs"
 VECTOR_STORE_NAME = "faiss_index"
@@ -22,7 +17,7 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 # Initialize NVIDIA Client with environment variable
 nvidia_client = OpenAI(
     base_url="https://integrate.api.nvidia.com/v1",
-    api_key=st.secrets["NVIDIA_API_KEY"]  # Make sure to set this in your environment
+    api_key=st.secrets["API_KEY"]  # Make sure to set this in your environment
 )
 
 def load_and_chunk_documents():
