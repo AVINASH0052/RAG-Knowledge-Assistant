@@ -1,4 +1,3 @@
-# app.py 
 import os
 import re
 import numexpr
@@ -9,7 +8,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 
-# Configuration
 DOCUMENT_DIR = "docs"
 VECTOR_STORE_NAME = "faiss_index"
 EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
@@ -34,10 +32,10 @@ def load_and_chunk_documents():
         raise FileNotFoundError(f"Missing document directory: {DOCUMENT_DIR}")
     
     documents = []
-    for file in ["doc1.txt", "doc2.txt", "doc3.txt"]:
-        file_path = os.path.join(DOCUMENT_DIR, file)
-        if os.path.exists(file_path):
-            documents.extend(TextLoader(file_path).load())
+    for file in os.listdir(DOCUMENT_DIR):
+        if file.endswith(".txt"):
+            path = os.path.join(DOCUMENT_DIR, file)
+            documents.extend(TextLoader(path).load())
     
     return RecursiveCharacterTextSplitter(
         chunk_size=300,
@@ -62,10 +60,9 @@ def initialize_vector_store():
 
 def generate_answer(query, context):
     system_prompt = f"""Answer using ONLY this context. Be concise.
-    If unsure, say "I don't know".
-    
-    Context: {context}"""
-    
+If unsure, say "I don't know".
+
+Context: {context}"""
     try:
         response = st.session_state.nvidia_client.chat.completions.create(
             model="nvidia/llama-3.1-nemotron-ultra-253b-v1",
@@ -84,17 +81,12 @@ def clean_response(text):
     return text.replace("<think>", "").replace("</think>", "").strip()
 
 def math_calculator(query):
-    """Enhanced math processor with strict validation"""
     try:
-        # Normalize and validate input
-        clean_query = re.sub(r'[^0-9\.\+\-\*/]', '', query)
-        if not re.fullmatch(r'^[\d\.\+\-\*/]+$', clean_query):
+        clean_query = re.sub(r'[^0-9\.\+\-\*/\(\)]', '', query)
+        if not re.fullmatch(r'^[\d\.\+\-\*/\(\)]+$', clean_query):
             return "❌ Invalid math expression"
-        
-        # Evaluate using numexpr for safety
         result = numexpr.evaluate(clean_query).item()
-        return f"{result:.2f}" if isinstance(result, float) else str(int(result))
-    
+        return f"{result2f}" if isinstance(result, float) else str(int(result))
     except ZeroDivisionError:
         return "❌ Cannot divide by zero"
     except Exception as e:
@@ -106,43 +98,42 @@ def term_definition(query):
         "IP68": "Ingress Protection rating for dust/water resistance",
         "5G": "Fifth-generation cellular network technology"
     }
-    match = re.search(r"\b(define|what is|meaning of) (\w+)", query, re.IGNORECASE)
+    match = re.search(r"\b(define|what is|meaning of)\s+(\w+)", query, re.IGNORECASE)
     return tech_terms.get(match.group(2).upper(), "❌ Term not found") if match else "❌ No term specified"
 
 def route_query(query):
-    """Strict query routing with math priority"""
-    # First check for math patterns
-    if re.search(r'\d+[\+\-\*\/]+\d+', query):
+    query = query.lower().strip()
+
+    math_keywords = re.search(r'(\d+[\+\-\*/]\d+)|\b(calculate|evaluate|solve|plus|minus|divided|times)\b', query)
+    if math_keywords:
         return "calculator", math_calculator(query)
-    
-    # Then check for technical definitions
+
     if re.search(r'\b(define|what is|meaning of)\b', query):
         return "dictionary", term_definition(query)
-    
-    # Default to RAG
+
     return "rag", None
 
 def main():
     st.title("🧠 RAG-Powered Multi-Agent Q&A Assistant")
-    
+
     try:
         if 'nvidia_client' not in st.session_state:
             st.session_state.nvidia_client = init_nvidia_client()
-            
         vs = initialize_vector_store()
     except Exception as e:
         st.error(f"Initialization failed: {str(e)}")
         return
 
-    query = st.text_input("Ask your question:", placeholder="Type your question here...")
+    query = st.text_input("Ask your question:", placeholder="e.g. What is OLED? or 12 * 7 or product info...")
     if not query.strip():
         return
 
     tool, answer = route_query(query)
     context = None
+    context_docs = []
 
     if tool == "rag":
-        with st.spinner("🔍 Analyzing documents..."):
+        with st.spinner("🔍 Searching documents..."):
             context_docs = vs.similarity_search(query, k=3)
             context = "\n---\n".join([doc.page_content for doc in context_docs])
             answer = generate_answer(query, context)
@@ -150,12 +141,12 @@ def main():
     st.subheader("Analysis")
     cols = st.columns(2)
     cols[0].metric("Processing Path", tool.upper())
-    cols[1].metric("Context Sources", len(context_docs) if context else 0)
-    
+    cols[1].metric("Context Sources", len(context_docs) if context_docs else 0)
+
     if context:
         with st.expander("📖 View Relevant Context"):
             st.text(context)
-    
+
     st.subheader("Answer")
     st.markdown(f"```\n{answer}\n```")
 
